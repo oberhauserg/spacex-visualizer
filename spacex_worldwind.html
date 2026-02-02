@@ -345,6 +345,11 @@
         // Initialize WorldWind
         WorldWind.Logger.setLoggingLevel(WorldWind.Logger.LEVEL_WARNING);
         
+        // Force antialiased WebGL context before WorldWind creates its own
+        const canvas = document.getElementById('canvasOne');
+        const glOptions = { antialias: true, alpha: true, premultipliedAlpha: true };
+        canvas.getContext('webgl', glOptions) || canvas.getContext('experimental-webgl', glOptions);
+        
         const wwd = new WorldWind.WorldWindow('canvasOne');
 
         // Layer order is crucial! StarField BEFORE Atmosphere (per NASA example)
@@ -582,13 +587,12 @@
                 const terminatorRaanDusk = (sunRA + 90) % 360;
                 const terminatorRaanDawn = (sunRA - 90 + 360) % 360;
                 
-                // Time since base date in seconds
+                // Time since base date in seconds (for mean anomaly propagation)
                 const elapsedSec = (date - this.baseDate) / 1000;
-                
-                // J2 drift calculation - same as createOrbitsFiltered
-                const epochStart = new Date(date);
-                epochStart.setUTCHours(0, 0, 0, 0);
-                const daysFraction = (date - epochStart) / (24 * 60 * 60 * 1000);
+
+                // Elapsed days since reference epoch for J2 precession
+                // Uses the same reference as createOrbitsFiltered for consistency
+                const elapsedDays = (date - j2ReferenceEpoch) / (24 * 60 * 60 * 1000);
                 
                 // Store geodetic positions for later conversion
                 this.geoPositions = [];
@@ -609,7 +613,7 @@
                     } else {
                         // Apply J2 precession using actual inclination
                         const precessionRate = j2PrecessionRate(elem.alt, elem.inc);
-                        raan = (elem.baseRaan + precessionRate * daysFraction + 360) % 360;
+                        raan = (elem.baseRaan + precessionRate * elapsedDays + 360) % 360;
                     }
                     
                     const pos = this.satellitePosition(elem.alt, elem.inc, raan, ma, gmst);
@@ -1207,23 +1211,29 @@
             createOrbitsFiltered(date, true, true);
         }
         
+        // Reference epoch for J2 precession calculations (page load time)
+        const j2ReferenceEpoch = new Date(simDate);
+
         // J2 nodal precession rate calculation
-        // Returns precession rate in degrees per day (positive = eastward/follows sun)
+        // Returns precession rate in degrees per day
+        // Negative for prograde orbits (i < 90°) = westward drift
+        // Positive for retrograde orbits (i > 90°) = eastward drift (e.g., SSO)
         function j2PrecessionRate(altitudeKm, inclinationDeg) {
             const J2 = 1.08263e-3;
             const Re = 6378.137;  // km
             const mu = 398600.4418;  // km³/s²
-            
+
             const a = Re + altitudeKm;  // semi-major axis
             const n = Math.sqrt(mu / (a * a * a));  // mean motion (rad/s)
             const i = inclinationDeg * Math.PI / 180;
-            
+
             // Ω̇ = -3/2 * J2 * (Re/a)² * n * cos(i)
+            // Prograde (i < 90°): cos(i) > 0, so Ω̇ < 0 (westward/decreasing RAAN)
+            // Retrograde (i > 90°): cos(i) < 0, so Ω̇ > 0 (eastward/increasing RAAN)
             const omegaDotRadPerSec = -1.5 * J2 * Math.pow(Re / a, 2) * n * Math.cos(i);
             const omegaDotDegPerDay = omegaDotRadPerSec * (180 / Math.PI) * 86400;
-            
-            // Flip sign so precession follows the sun (eastward in ECEF frame)
-            return -omegaDotDegPerDay;
+
+            return omegaDotDegPerDay;
         }
 
         function createOrbitsFiltered(date, showSSO, showLEO) {
@@ -1231,11 +1241,10 @@
             const gmst = gmstDegrees(date);
             const terminatorRaanDusk = (sunRA + 90) % 360;
             const terminatorRaanDawn = (sunRA - 90 + 360) % 360;
-            
-            // Calculate time since epoch (start of current day) for J2 drift
-            const epochStart = new Date(date);
-            epochStart.setUTCHours(0, 0, 0, 0);
-            const daysFraction = (date - epochStart) / (24 * 60 * 60 * 1000);
+
+            // Calculate elapsed days since reference epoch for J2 drift
+            // This accumulates continuously instead of resetting at midnight
+            const elapsedDays = (date - j2ReferenceEpoch) / (24 * 60 * 60 * 1000);
 
             // Clear existing
             orbitFieldLayer.clearOrbits();
@@ -1262,26 +1271,108 @@
             const leoAInclinations = [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80];
             
             // Scale factors based on satellites per shell:
-            // SSO: 15,000 sats → brightest/thickest (reference)
-            // LEO-A/B: 1,500 sats → 10× fewer
+            // SSO: 15,000 sats/shell → thicker (10× more than LEO)
+            // LEO-A/B: 1,500 sats/shell
+            // One representative orbit per shell
             
             // Color schemes - scaled by satellite density
-            // SSO: 15,000 sats/shell - bright and thick
-            const ssoColor = [0.133, 0.827, 0.933, 0.8];      // Cyan, high alpha
+            // SSO: 15,000 sats/shell - thicker and brighter
+            // rgb(152, 219, 233)
+            //const ssoColor = [0.133, 0.827, 0.933, 0.8];      // Cyan
+            const ssoColor = [152.0/255.0, 219.0/255.0, 233.0/255.0, 0.7];      // Cyan            
             const ssoWidth = 2.5;
             
-            // LEO-A: 1,500 sats/shell - dimmer and thinner (10× fewer)
-            const leoAColor = [0.976, 0.451, 0.086, 0.4];     // Orange, lower alpha
+            // LEO-A: 1,500 sats/shell - thinner (10× fewer sats)
+            // const leoAColor = [0.976, 0.451, 0.086, 0.45];     // Orange
+            // rgb(205, 79, 0)
+            const leoAColor = [205/255, 79/255, 0/255, 0.5];     // Orange
             const leoAWidth = 1.0;
             
-            // LEO-B: 1,500 sats/shell - softer green for visibility against orange/cyan
-            const leoBColor = [0.3, 0.85, 0.5, 0.7];          // Softer green
-            const leoBWidth = 1.8;
+            // LEO-B: 1,500 sats/shell - green for visibility
+            // rgb(44, 180, 100)
+           const leoBColor = [44/255, 180/255, 100/255, 0.5];          // Green
+            
+//            const leoBColor = [0.3, 0.85, 0.5, 0.5];          // Green
+            const leoBWidth = 1.0;
+
+            if (showLEO) {
+                // LEO-A Shells 1-341: 11 inclinations × 31 altitudes = 341 shells
+                // Real constellation has 50 planes per shell; adjust planesPerShell to show more/fewer
+                const planesPerShell = 1;  // Set to 1 for original behavior, higher for denser view
+
+                // Base RAAN spacing: spread each inclination's altitudes across 360°
+                const raanSpacing = 360 / allAltitudes.length;  // ~11.6° between altitude shells
+
+                leoAInclinations.forEach((inc, incIdx) => {
+                    // Offset each inclination so they interleave rather than overlap
+                    const incOffset = (incIdx / leoAInclinations.length) * raanSpacing;
+
+                    allAltitudes.forEach((alt, altIdx) => {
+                        // Primary RAAN from altitude index (spreads across 360°)
+                        const shellBaseRaan = (altIdx * raanSpacing + incOffset) % 360;
+
+                        // Calculate J2 drift from reference epoch
+                        const precessionRate = j2PrecessionRate(alt, inc);
+                        const raanDrift = precessionRate * elapsedDays;
+
+                        // Draw plane(s) for this shell
+                        for (let plane = 0; plane < planesPerShell; plane++) {
+                            // Additional planes evenly spaced around 360° from the base
+                            const planeOffset = (plane / planesPerShell) * 360;
+                            const raan = (shellBaseRaan + planeOffset + raanDrift + 360) % 360;
+
+                            const positions = generateOrbitPositions(alt, inc, raan, gmst);
+                            orbitFieldLayer.addOrbit(positions, leoAColor, leoAWidth);
+                        }
+                    });
+                });
+
+                // Ground tracks for a couple LEO-A inclinations
+                [30, 55, 80].forEach((inc) => {
+                    const precessionRate = j2PrecessionRate(1000, inc);
+                    const raanDrift = precessionRate * elapsedDays;
+                    const raan = (0 + raanDrift + 360) % 360;
+                    const positions = generateOrbitPositions(1000, inc, raan, gmst);
+                    const groundPositions = positions.map(p => new WorldWind.Position(p.latitude, p.longitude, 0));
+                    const groundPath = new WorldWind.Path(groundPositions, ground30Attrs);
+                    groundPath.altitudeMode = WorldWind.CLAMP_TO_GROUND;
+                    groundPath.followTerrain = true;
+                    groundTrackLayer.addRenderable(groundPath);
+                });
+                
+                // LEO-B Shells 342-357: 16 shells at 85° (500-1250 km)
+                // Show one representative orbit per shell
+                const leoBAttrs = new WorldWind.ShapeAttributes(null);
+                leoBAttrs.outlineColor = new WorldWind.Color(0.3, 0.85, 0.5, 0.8);
+                leoBAttrs.outlineWidth = 2;
+                
+                leoBaltitudes.forEach((alt, altIdx) => {
+                    // Spread RAANs evenly across all 16 shells (22.5° apart)
+                    const baseRaan = (altIdx / leoBaltitudes.length) * 360;
+
+                    const precessionRate = j2PrecessionRate(alt, 85);
+                    const raanDrift = precessionRate * elapsedDays;
+                    const raan = (baseRaan + raanDrift + 360) % 360;
+
+                    const positions = generateOrbitPositions(alt, 85, raan, gmst);
+                    orbitFieldLayer.addOrbit(positions, leoBColor, leoBWidth);
+                });
+
+                // Ground track for 85° polar orbit
+                const precessionRate85 = j2PrecessionRate(1000, 85);
+                const raanDrift85 = precessionRate85 * elapsedDays;
+                const raan85 = (0 + raanDrift85 + 360) % 360;
+                const positions85 = generateOrbitPositions(1000, 85, raan85, gmst);
+                const groundPositions85 = positions85.map(p => new WorldWind.Position(p.latitude, p.longitude, 0));
+                const groundPath85 = new WorldWind.Path(groundPositions85, leoBAttrs);
+                groundPath85.altitudeMode = WorldWind.CLAMP_TO_GROUND;
+                groundPath85.followTerrain = true;
+                groundTrackLayer.addRenderable(groundPath85);
+            }
 
             if (showSSO) {
                 // SSO Shells 358-388: 31 shells at 97° (500-2000 km)
-                // Each shell has 500 planes spread ±20° around terminator
-                // Show orbits spread across the terminator band
+                // Show one representative orbit per shell on each terminator
                 allAltitudes.forEach((alt, altIdx) => {
                     // Spread across terminator band: ±20° from exact terminator
                     const spreadAngle = ((altIdx / allAltitudes.length) - 0.5) * 40;  // -20° to +20°
@@ -1308,77 +1399,14 @@
                 });
             }
 
-            if (showLEO) {
-                // LEO-A Shells 1-341: 11 inclinations × 31 altitudes = 341 shells
-                // Each shell has 50 planes - spread RAANs across ALL shells for coverage
-                let shellIndex = 0;
-                const totalLeoAShells = leoAInclinations.length * allAltitudes.length;  // 341
-                
-                leoAInclinations.forEach((inc, incIdx) => {
-                    allAltitudes.forEach((alt, altIdx) => {
-                        // Spread RAANs evenly across all 341 shells
-                        const baseRaan = (shellIndex / totalLeoAShells) * 360;
-                        
-                        // Calculate J2 drift
-                        const precessionRate = j2PrecessionRate(alt, inc);
-                        const raanDrift = precessionRate * daysFraction;
-                        const raan = (baseRaan + raanDrift + 360) % 360;
-                        
-                        const positions = generateOrbitPositions(alt, inc, raan, gmst);
-                        orbitFieldLayer.addOrbit(positions, leoAColor, leoAWidth);
-                        
-                        shellIndex++;
-                    });
-                });
 
-                // Ground tracks for a couple LEO-A inclinations
-                [30, 55, 80].forEach((inc) => {
-                    const precessionRate = j2PrecessionRate(1000, inc);
-                    const raanDrift = precessionRate * daysFraction;
-                    const raan = (0 + raanDrift + 360) % 360;
-                    const positions = generateOrbitPositions(1000, inc, raan, gmst);
-                    const groundPositions = positions.map(p => new WorldWind.Position(p.latitude, p.longitude, 0));
-                    const groundPath = new WorldWind.Path(groundPositions, ground30Attrs);
-                    groundPath.altitudeMode = WorldWind.CLAMP_TO_GROUND;
-                    groundPath.followTerrain = true;
-                    groundTrackLayer.addRenderable(groundPath);
-                });
-                
-                // LEO-B Shells 342-357: 16 shells at 85° (500-1250 km)
-                // Each shell has 50 planes - spread evenly around globe
-                const leoBAttrs = new WorldWind.ShapeAttributes(null);
-                leoBAttrs.outlineColor = new WorldWind.Color(0.3, 0.85, 0.5, 0.8);
-                leoBAttrs.outlineWidth = 2;
-                
-                leoBaltitudes.forEach((alt, altIdx) => {
-                    // Spread RAANs evenly across all 16 shells (360/16 = 22.5° apart)
-                    const baseRaan = (altIdx / leoBaltitudes.length) * 360;
-                    
-                    const precessionRate = j2PrecessionRate(alt, 85);
-                    const raanDrift = precessionRate * daysFraction;
-                    const raan = (baseRaan + raanDrift + 360) % 360;
-                    
-                    const positions = generateOrbitPositions(alt, 85, raan, gmst);
-                    orbitFieldLayer.addOrbit(positions, leoBColor, leoBWidth);
-                });
-                
-                // Ground track for 85° polar orbit
-                const precessionRate85 = j2PrecessionRate(1000, 85);
-                const raanDrift85 = precessionRate85 * daysFraction;
-                const raan85 = (0 + raanDrift85 + 360) % 360;
-                const positions85 = generateOrbitPositions(1000, 85, raan85, gmst);
-                const groundPositions85 = positions85.map(p => new WorldWind.Position(p.latitude, p.longitude, 0));
-                const groundPath85 = new WorldWind.Path(groundPositions85, leoBAttrs);
-                groundPath85.altitudeMode = WorldWind.CLAMP_TO_GROUND;
-                groundPath85.followTerrain = true;
-                groundTrackLayer.addRenderable(groundPath85);
-            }
             
-            // Log shell count
-            const ssoShells = showSSO ? 31 * 2 : 0;  // Dawn + dusk
-            const leoAShells = showLEO ? 11 * 31 : 0;
-            const leoBShells = showLEO ? 16 : 0;
-            console.log(`Orbit lines: ${ssoShells} SSO + ${leoAShells} LEO-A + ${leoBShells} LEO-B = ${ssoShells + leoAShells + leoBShells} total`);
+            // Log orbit count (planesPerShell is defined in LEO-A block above)
+            const leoAPlanesPerShell = 1;  // Keep in sync with planesPerShell above
+            const ssoOrbits = showSSO ? 31 * 2 : 0;  // Dawn + dusk, 1 per shell
+            const leoAOrbits = showLEO ? 11 * 31 * leoAPlanesPerShell : 0;
+            const leoBOrbits = showLEO ? 16 : 0;  // 1 per shell
+            console.log(`Orbits: ${ssoOrbits} SSO + ${leoAOrbits} LEO-A + ${leoBOrbits} LEO-B = ${ssoOrbits + leoAOrbits + leoBOrbits} total`);
         }
 
         // Create initial orbits
