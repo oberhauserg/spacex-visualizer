@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpaceX Orbital Data Center Constellation - NASA WorldWind</title>
+    <script src="https://files.worldwind.arc.nasa.gov/artifactory/web/0.11.0/worldwind.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #canvasOne {
+            width: 100vw;
+            height: 100vh;
+        }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            max-width: 280px;
+            z-index: 1000;
+            border: 1px solid #333;
+        }
+        .controls h2 {
+            margin-bottom: 12px;
+            font-size: 15px;
+            color: #22d3ee;
+        }
+        .controls label {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            cursor: pointer;
+        }
+        .controls input[type="checkbox"] {
+            margin-right: 10px;
+            width: 16px;
+            height: 16px;
+        }
+        .sso-label { color: #22d3ee; }
+        .deg30-label { color: #f97316; }
+        .ground-label { color: #4ade80; }
+        
+        .info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            color: #ccc;
+            font-size: 12px;
+            max-width: 300px;
+            border: 1px solid #333;
+        }
+        .info h3 {
+            color: #fff;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .info p {
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .legend {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #444;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 11px;
+        }
+        .legend-color {
+            width: 24px;
+            height: 3px;
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+        .time-control {
+            margin-top: 15px;
+            padding-top: 12px;
+            border-top: 1px solid #444;
+        }
+        .time-control > label {
+            display: block;
+            margin-bottom: 8px;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .time-control input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
+        }
+        .time-display {
+            text-align: center;
+            margin-top: 5px;
+            font-family: monospace;
+            color: #fbbf24;
+            font-size: 13px;
+        }
+        .sim-label {
+            color: #fbbf24 !important;
+            font-size: 12px;
+        }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .panel-header h2, .panel-header h3 {
+            margin: 0;
+        }
+        .collapse-btn, .close-btn {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0 5px;
+            line-height: 1;
+        }
+        .collapse-btn:hover, .close-btn:hover {
+            color: #fff;
+        }
+        .panel-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+            max-height: 500px;
+        }
+        .panel-content.collapsed {
+            max-height: 0 !important;
+            padding-top: 0;
+            padding-bottom: 0;
+            margin: 0;
+        }
+        .controls.collapsed {
+            padding-bottom: 15px;
+        }
+        .controls.collapsed .panel-header {
+            margin-bottom: 0;
+        }
+        .info.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvasOne">
+        Your browser does not support HTML5 Canvas.
+    </canvas>
+    
+    <div class="controls" id="controlsPanel">
+        <div class="panel-header">
+            <h2>🛰️ SpaceX Orbital Data Centers</h2>
+            <button class="collapse-btn" id="collapseControls" title="Collapse">−</button>
+        </div>
+        <div class="panel-content" id="controlsContent">
+        <label class="sso-label">
+            <input type="checkbox" id="toggleSSO" checked>
+            Sun-Synchronous (98°)
+        </label>
+        <label class="deg30-label">
+            <input type="checkbox" id="toggle30" checked>
+            LEO-A/B (30°-85°)
+        </label>
+        <label style="color: #fff;">
+            <input type="checkbox" id="toggleSatellites">
+            🌟 Show 500K Satellites
+        </label>
+        <label class="ground-label">
+            <input type="checkbox" id="toggleGround" checked>
+            Ground Tracks
+        </label>
+        <label style="color: #a78bfa;">
+            <input type="checkbox" id="toggleAtmosphere" checked>
+            Atmosphere (hide for ground view)
+        </label>
+        
+        <div class="time-control">
+            <label>Time (hours from now)</label>
+            <input type="range" id="timeSlider" min="-12" max="12" step="0.1" value="0">
+            <div class="time-display" id="timeDisplay">Now</div>
+            <label class="sim-label">
+                <input type="checkbox" id="runSimulation">
+                Animate Day/Night
+            </label>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #22d3ee;"></div>
+                <span>SSO 97° (465K - terminator sun)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f97316;"></div>
+                <span>LEO-A 30°-80° (512K - coverage)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4dd980;"></div>
+                <span>LEO-B 85° (23K - polar)</span>
+            </div>
+        </div>
+        </div>
+    </div>
+    
+    <div class="info" id="infoPanel">
+        <div class="panel-header">
+            <h3>SpaceX SXODC Filing (Jan 2026)</h3>
+            <button class="close-btn" id="closeInfo" title="Close">×</button>
+        </div>
+        <div class="panel-content" id="infoContent">
+        <p>Proposed 1 million satellites for orbital AI data centers at 500-2000 km altitude in 50 km shells.</p>
+        <p><strong>SSO (97°):</strong> 465K satellites in 31 shells × 500 planes. Terminator-riding for near-constant solar power.</p>
+        <p><strong>LEO-A (30°-80°):</strong> 512K satellites across 11 inclinations × 31 shells × 50 planes. Dense coverage over populated latitudes.</p>
+        <p><strong>LEO-B (85°):</strong> 23K satellites for near-polar coverage.</p>
+        <p><em>Data: Jonathan McDowell, planet4589.org</em></p>
+        </div>
+    </div>
+
+    <script>
+        // Constants
+        const R_EARTH = 6378.137;
+        const F_EARTH = 1/298.257223563;
+
+        // Visualization date
+        let simDate = new Date();
+
+        // Sun position calculation
+        function sunPositionApprox(date) {
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth() + 1;
+            const day = date.getUTCDate();
+            const hour = date.getUTCHours() + date.getUTCMinutes()/60;
+            
+            const jd = 367*year - Math.floor(7*(year + Math.floor((month+9)/12))/4) + 
+                       Math.floor(275*month/9) + day + 1721013.5 + hour/24;
+            const n = jd - 2451545.0;
+            const L = (280.460 + 0.9856474*n) % 360;
+            const g = (357.528 + 0.9856003*n) % 360;
+            const gRad = g * Math.PI / 180;
+            const lam = L + 1.915*Math.sin(gRad) + 0.020*Math.sin(2*gRad);
+            const eps = 23.439 - 0.0000004*n;
+            const epsRad = eps * Math.PI / 180;
+            const lamRad = lam * Math.PI / 180;
+            let ra = Math.atan2(Math.cos(epsRad)*Math.sin(lamRad), Math.cos(lamRad)) * 180 / Math.PI;
+            return ((ra % 360) + 360) % 360;
+        }
+
+        function gmstDegrees(date) {
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth() + 1;
+            const day = date.getUTCDate();
+            const hour = date.getUTCHours() + date.getUTCMinutes()/60;
+            
+            const jd = 367*year - Math.floor(7*(year + Math.floor((month+9)/12))/4) + 
+                       Math.floor(275*month/9) + day + 1721013.5 + hour/24;
+            const T = (jd - 2451545.0) / 36525.0;
+            const gmst = 280.46061837 + 360.98564736629*(jd - 2451545.0) + 
+                        0.000387933*T*T - T*T*T/38710000;
+            return ((gmst % 360) + 360) % 360;
+        }
+
+        function generateOrbitECI(altitudeKm, inclinationDeg, raanDeg, nPoints = 180) {
+            const radius = R_EARTH + altitudeKm;
+            const inc = inclinationDeg * Math.PI / 180;
+            const raan = raanDeg * Math.PI / 180;
+            const coords = [];
+
+            for (let i = 0; i <= nPoints; i++) {
+                const nu = (i / nPoints) * 2 * Math.PI;
+                const xOrb = radius * Math.cos(nu);
+                const yOrb = radius * Math.sin(nu);
+
+                const cosRaan = Math.cos(raan), sinRaan = Math.sin(raan);
+                const cosInc = Math.cos(inc), sinInc = Math.sin(inc);
+
+                const xEci = cosRaan * xOrb - sinRaan * cosInc * yOrb;
+                const yEci = sinRaan * xOrb + cosRaan * cosInc * yOrb;
+                const zEci = sinInc * yOrb;
+
+                coords.push([xEci, yEci, zEci]);
+            }
+            return coords;
+        }
+
+        function eciToEcef(eciCoords, gmstDeg) {
+            const theta = gmstDeg * Math.PI / 180;
+            const c = Math.cos(theta), s = Math.sin(theta);
+            return eciCoords.map(([x, y, z]) => [
+                c * x + s * y,
+                -s * x + c * y,
+                z
+            ]);
+        }
+
+        function ecefToGeodetic(ecefCoords) {
+            const a = R_EARTH;
+            const b = a * (1 - F_EARTH);
+            const e2 = 1 - (b/a)*(b/a);
+
+            return ecefCoords.map(([x, y, z]) => {
+                const lon = Math.atan2(y, x) * 180 / Math.PI;
+                const p = Math.sqrt(x*x + y*y);
+                let lat = Math.atan2(z, p * (1 - e2));
+                
+                for (let i = 0; i < 5; i++) {
+                    const N = a / Math.sqrt(1 - e2 * Math.sin(lat)*Math.sin(lat));
+                    lat = Math.atan2(z + e2 * N * Math.sin(lat), p);
+                }
+                
+                const N = a / Math.sqrt(1 - e2 * Math.sin(lat)*Math.sin(lat));
+                const alt = p / Math.cos(lat) - N;
+                
+                return {
+                    lat: lat * 180 / Math.PI,
+                    lon: lon,
+                    alt: alt * 1000
+                };
+            });
+        }
+
+        function generateOrbitPositions(altitudeKm, inclinationDeg, raanDeg, gmst) {
+            const eci = generateOrbitECI(altitudeKm, inclinationDeg, raanDeg);
+            const ecef = eciToEcef(eci, gmst);
+            const geodetic = ecefToGeodetic(ecef);
+            return geodetic.map(g => new WorldWind.Position(g.lat, g.lon, g.alt));
+        }
+
+        // Initialize WorldWind
+        WorldWind.Logger.setLoggingLevel(WorldWind.Logger.LEVEL_WARNING);
+        
+        const wwd = new WorldWind.WorldWindow('canvasOne');
+
+        // Layer order is crucial! StarField BEFORE Atmosphere (per NASA example)
+        const bmngOneImage = new WorldWind.BMNGOneImageLayer();  // Quick loading base
+        const bmngLayer = new WorldWind.BMNGLayer();  // Tiled base imagery
+        const bmngLandsatLayer = new WorldWind.BMNGLandsatLayer();  // Higher resolution imagery
+        const starFieldLayer = new WorldWind.StarFieldLayer();
+        const atmosphereLayer = new WorldWind.AtmosphereLayer();
+
+        wwd.addLayer(bmngOneImage);
+        wwd.addLayer(bmngLayer);
+        wwd.addLayer(bmngLandsatLayer);
+        wwd.addLayer(starFieldLayer);  // IMPORTANT: add starFieldLayer BEFORE atmosphereLayer
+        
+        // Custom SatelliteFieldLayer - renders millions of satellites as points
+        class SatelliteFieldLayer extends WorldWind.Layer {
+            constructor(displayName) {
+                super(displayName);
+                this.satellites = null;  // Float32Array of line vertices
+                this.orbitalElements = null;  // Array of {alt, inc, raan, ma0, period}
+                this.satelliteCount = 0;
+                this.vertexCount = 0;
+                this.baseDate = null;  // Reference time for orbital propagation
+                this.currentDate = null;
+                this.color = [1, 1, 1, 0.9];  // white
+                this._vertexBuffer = null;
+                this._vertexCount = 0;
+                this._needsRebuild = false;
+                this._glintProgram = null;
+            }
+            
+            // Calculate orbital period in seconds
+            calcOrbitalPeriod(altitudeKm) {
+                const mu = 398600.4418;  // km³/s²
+                const Re = 6378.137;  // km
+                const a = Re + altitudeKm;
+                return 2 * Math.PI * Math.sqrt(a * a * a / mu);
+            }
+            
+            generateSatellites(date, count, showSSO, showLEO) {
+                console.log("Starting satellite generation for", count, "satellites");
+                const startTime = performance.now();
+                
+                this.baseDate = date;
+                this.currentDate = date;  // For shader
+                this._needsRebuild = true;
+                
+                const sunRA = sunPositionApprox(date);
+                const gmst = gmstDegrees(date);
+                const terminatorRaanDusk = (sunRA + 90) % 360;
+                const terminatorRaanDawn = (sunRA - 90 + 360) % 360;
+                
+                // Store orbital elements for animation
+                this.orbitalElements = [];
+                
+                // Seeded random for reproducible distribution
+                const seededRandom = (seed) => {
+                    const x = Math.sin(seed * 9999.9) * 10000;
+                    return x - Math.floor(x);
+                };
+                let seedCounter = 12345;
+                const nextRandom = () => seededRandom(seedCounter++);
+                
+                // SXODC actual configuration from FCC filing (J. McDowell):
+                // - SSO (97°): 31 shells × 500 planes × 30 sats = 465,000 (46.5%)
+                // - LEO-A (30-80° in 5° steps): 11 inc × 31 shells × 50 planes × 30 sats = 511,500 (51.15%)
+                // - LEO-B (85°): 16 shells × ~1,469 avg = 23,500 (2.35%)
+                
+                // Altitude shells: 500-2000 km in 50 km steps (31 shells)
+                const altitudes = [];
+                for (let alt = 500; alt <= 2000; alt += 50) {
+                    altitudes.push(alt);
+                }
+                
+                // LEO-A inclinations: 30° to 80° in 5° steps (11 inclinations)
+                const leoAInclinations = [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80];
+                
+                // Calculate distribution
+                let ssoCount = 0;
+                let leoCount = 0;
+                
+                if (showSSO && showLEO) {
+                    ssoCount = Math.floor(count * 0.465);  // 46.5% SSO
+                    leoCount = count - ssoCount;           // 53.5% LEO (A + B)
+                } else if (showSSO) {
+                    ssoCount = count;
+                } else if (showLEO) {
+                    leoCount = count;
+                }
+                
+                // SSO satellites (97° sun-synchronous, terminator-riding)
+                if (ssoCount > 0) {
+                    // 500 planes per shell in actual filing, simplified for viz
+                    const planesPerShell = 150;  // More planes for better spread
+                    const satsPerPlane = Math.max(1, Math.floor(ssoCount / (altitudes.length * planesPerShell)));
+                    
+                    for (let altIdx = 0; altIdx < altitudes.length; altIdx++) {
+                        const alt = altitudes[altIdx];
+                        const period = this.calcOrbitalPeriod(alt);
+                        
+                        for (let plane = 0; plane < planesPerShell; plane++) {
+                            // Spread planes across full terminator band (±20° from exact terminator)
+                            const termIdx = plane % 2;  // Alternate dawn/dusk
+                            // Walker-delta-like distribution: offset RAAN based on plane index
+                            const planePhase = (plane / planesPerShell) * 360;
+                            const planeOffset = (planePhase % 40) - 20;  // ±20° from terminator
+                            
+                            for (let sat = 0; sat < satsPerPlane; sat++) {
+                                // Spread satellites evenly around orbit with small random jitter
+                                const baseMA = (sat / satsPerPlane) * 360;
+                                const jitter = (nextRandom() - 0.5) * (360 / satsPerPlane) * 0.5;
+                                const ma0 = (baseMA + jitter + 360) % 360;
+                                
+                                // Small altitude variation within shell (±10 km)
+                                const altVar = (nextRandom() - 0.5) * 20;
+                                
+                                this.orbitalElements.push({
+                                    alt: alt + altVar,
+                                    inc: 97,
+                                    termIdx: termIdx,
+                                    planeOffset: planeOffset,
+                                    ma0: ma0,
+                                    period: period,
+                                    isSSO: true
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                // LEO satellites (30°-85° inclinations)
+                if (leoCount > 0) {
+                    // LEO-B (85°) gets ~4.4% of LEO, rest goes to LEO-A
+                    const leoBCount = Math.floor(leoCount * 0.044);
+                    const leoACount = leoCount - leoBCount;
+                    
+                    // LEO-A: 11 inclinations × 31 altitudes × 50 planes
+                    const totalLeoASlots = leoAInclinations.length * altitudes.length;
+                    const leoAPerIncAlt = Math.floor(leoACount / totalLeoASlots);
+                    const planesPerShellA = 50;
+                    const satsPerPlaneA = Math.max(1, Math.floor(leoAPerIncAlt / planesPerShellA));
+                    
+                    for (let incIdx = 0; incIdx < leoAInclinations.length; incIdx++) {
+                        const inc = leoAInclinations[incIdx];
+                        
+                        for (let altIdx = 0; altIdx < altitudes.length; altIdx++) {
+                            const alt = altitudes[altIdx];
+                            const period = this.calcOrbitalPeriod(alt);
+                            
+                            // Offset RAAN pattern for each inclination to avoid overlap
+                            const incRaanOffset = (incIdx / leoAInclinations.length) * (360 / planesPerShellA);
+                            
+                            for (let plane = 0; plane < planesPerShellA; plane++) {
+                                const baseRaan = ((plane / planesPerShellA) * 360 + incRaanOffset) % 360;
+                                // Small RAAN jitter for natural spread
+                                const raanJitter = (nextRandom() - 0.5) * 3;
+                                
+                                for (let sat = 0; sat < satsPerPlaneA; sat++) {
+                                    const baseMA = (sat / satsPerPlaneA) * 360;
+                                    const jitter = (nextRandom() - 0.5) * (360 / satsPerPlaneA) * 0.5;
+                                    const ma0 = (baseMA + jitter + 360) % 360;
+                                    
+                                    // Small altitude variation (±10 km)
+                                    const altVar = (nextRandom() - 0.5) * 20;
+                                    
+                                    this.orbitalElements.push({
+                                        alt: alt + altVar,
+                                        inc: inc,
+                                        baseRaan: baseRaan + raanJitter,
+                                        ma0: ma0,
+                                        period: period,
+                                        isSSO: false
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    
+                    // LEO-B: 85° inclination, 16 altitude shells (500-1250 km per McDowell data)
+                    const leoBaltitudes = [];
+                    for (let alt = 500; alt <= 1250; alt += 50) {
+                        leoBaltitudes.push(alt);
+                    }
+                    const leoBPerAlt = Math.floor(leoBCount / leoBaltitudes.length);
+                    const planesPerShellB = 50;
+                    const satsPerPlaneB = Math.max(1, Math.floor(leoBPerAlt / planesPerShellB));
+                    
+                    for (let altIdx = 0; altIdx < leoBaltitudes.length; altIdx++) {
+                        const alt = leoBaltitudes[altIdx];
+                        const period = this.calcOrbitalPeriod(alt);
+                        
+                        for (let plane = 0; plane < planesPerShellB; plane++) {
+                            const baseRaan = (plane / planesPerShellB) * 360;
+                            const raanJitter = (nextRandom() - 0.5) * 3;
+                            
+                            for (let sat = 0; sat < satsPerPlaneB; sat++) {
+                                const baseMA = (sat / satsPerPlaneB) * 360;
+                                const jitter = (nextRandom() - 0.5) * (360 / satsPerPlaneB) * 0.5;
+                                const ma0 = (baseMA + jitter + 360) % 360;
+                                
+                                const altVar = (nextRandom() - 0.5) * 20;
+                                
+                                this.orbitalElements.push({
+                                    alt: alt + altVar,
+                                    inc: 85,
+                                    baseRaan: baseRaan + raanJitter,
+                                    ma0: ma0,
+                                    period: period,
+                                    isSSO: false
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                this.satelliteCount = this.orbitalElements.length;
+                this.vertexCount = this.satelliteCount * 2;
+                this.satellites = new Float32Array(this.vertexCount * 3);
+                
+                // Generate initial positions
+                this.updatePositions(date);
+                
+                const endTime = performance.now();
+                console.log(`Generated ${this.satelliteCount} satellites in ${(endTime - startTime).toFixed(0)}ms`);
+            }
+            
+            updatePositions(date) {
+                if (!this.orbitalElements || this.orbitalElements.length === 0) return;
+                
+                this.currentDate = date;  // Store for shader
+                this._needsRebuild = true;  // Need to rebuild vertex buffer
+                
+                const gmst = gmstDegrees(date);
+                const sunRA = sunPositionApprox(date);
+                const terminatorRaanDusk = (sunRA + 90) % 360;
+                const terminatorRaanDawn = (sunRA - 90 + 360) % 360;
+                
+                // Time since base date in seconds
+                const elapsedSec = (date - this.baseDate) / 1000;
+                
+                // J2 drift calculation - same as createOrbitsFiltered
+                const epochStart = new Date(date);
+                epochStart.setUTCHours(0, 0, 0, 0);
+                const daysFraction = (date - epochStart) / (24 * 60 * 60 * 1000);
+                
+                // Store geodetic positions for later conversion
+                this.geoPositions = [];
+                
+                for (let i = 0; i < this.orbitalElements.length; i++) {
+                    const elem = this.orbitalElements[i];
+                    
+                    // Calculate current mean anomaly (satellite moves along orbit)
+                    const orbitsCompleted = elapsedSec / elem.period;
+                    const ma = (elem.ma0 + orbitsCompleted * 360) % 360;
+                    
+                    // Calculate RAAN - use same logic as createOrbitsFiltered
+                    let raan;
+                    if (elem.isSSO) {
+                        // SSO tracks terminator with plane offset for spread
+                        const baseRaan = elem.termIdx === 0 ? terminatorRaanDusk : terminatorRaanDawn;
+                        raan = (baseRaan + (elem.planeOffset || 0) + 360) % 360;
+                    } else {
+                        // Apply J2 precession using actual inclination
+                        const precessionRate = j2PrecessionRate(elem.alt, elem.inc);
+                        raan = (elem.baseRaan + precessionRate * daysFraction + 360) % 360;
+                    }
+                    
+                    const pos = this.satellitePosition(elem.alt, elem.inc, raan, ma, gmst);
+                    this.geoPositions.push(pos);
+                }
+            }
+            
+            satellitePosition(altitudeKm, inclinationDeg, raanDeg, meanAnomalyDeg, gmst) {
+                // Generate lat/lon/alt the same way orbits do, then let WorldWind convert
+                const radius = 6378.137 + altitudeKm;  // km
+                const inc = inclinationDeg * Math.PI / 180;
+                const raan = raanDeg * Math.PI / 180;
+                const nu = meanAnomalyDeg * Math.PI / 180;
+                const theta = gmst * Math.PI / 180;
+                
+                // Position in orbital plane
+                const xOrb = radius * Math.cos(nu);
+                const yOrb = radius * Math.sin(nu);
+                
+                // Velocity direction in orbital plane (prograde)
+                const vxOrb = -Math.sin(nu);
+                const vyOrb = Math.cos(nu);
+                
+                // ECI rotation (identical to generateOrbitECI)
+                const cosRaan = Math.cos(raan), sinRaan = Math.sin(raan);
+                const cosInc = Math.cos(inc), sinInc = Math.sin(inc);
+                
+                const xEci = cosRaan * xOrb - sinRaan * cosInc * yOrb;
+                const yEci = sinRaan * xOrb + cosRaan * cosInc * yOrb;
+                const zEci = sinInc * yOrb;
+                
+                const vxEci = cosRaan * vxOrb - sinRaan * cosInc * vyOrb;
+                const vyEci = sinRaan * vxOrb + cosRaan * cosInc * vyOrb;
+                const vzEci = sinInc * vyOrb;
+                
+                // ECI to ECEF (identical to eciToEcef) - still in km
+                const c = Math.cos(theta), s = Math.sin(theta);
+                const xEcef = c * xEci + s * yEci;
+                const yEcef = -s * xEci + c * yEci;
+                const zEcef = zEci;
+                
+                const vxEcef = c * vxEci + s * vyEci;
+                const vyEcef = -s * vxEci + c * vyEci;
+                const vzEcef = vzEci;
+                
+                // Convert ECEF to geodetic (same as ecefToGeodetic)
+                const a = 6378.137;
+                const f = 1/298.257223563;
+                const b = a * (1 - f);
+                const e2 = 1 - (b/a)*(b/a);
+                
+                const lon = Math.atan2(yEcef, xEcef) * 180 / Math.PI;
+                const p = Math.sqrt(xEcef*xEcef + yEcef*yEcef);
+                let lat = Math.atan2(zEcef, p * (1 - e2));
+                
+                for (let i = 0; i < 5; i++) {
+                    const N = a / Math.sqrt(1 - e2 * Math.sin(lat)*Math.sin(lat));
+                    lat = Math.atan2(zEcef + e2 * N * Math.sin(lat), p);
+                }
+                
+                const N = a / Math.sqrt(1 - e2 * Math.sin(lat)*Math.sin(lat));
+                const alt = p / Math.cos(lat) - N;
+                
+                return { 
+                    lat: lat * 180 / Math.PI,
+                    lon: lon,
+                    alt: alt * 1000,  // Convert to meters
+                    vx: vxEcef, vy: vyEcef, vz: vzEcef
+                };
+            }
+            
+            doRender(dc) {
+                if (dc.globe.is2D()) return;
+                if (!this.geoPositions || this.geoPositions.length === 0) return;
+                if (!this.currentDate) return;
+                
+                const gl = dc.currentGlContext;
+                
+                // Create GPU shader that does ALL calculations - sun glints, shadows, occlusion
+                if (!this._glintProgram) {
+                    const vsSource = `
+                        attribute vec3 aPosition;
+                        
+                        uniform mat4 uMvpMatrix;
+                        uniform vec3 uEyePoint;
+                        uniform vec3 uSunDir;
+                        uniform float uEarthRadius;
+                        uniform float uTime;  // For slight variation
+                        
+                        varying float vBrightness;
+                        
+                        void main() {
+                            // Satellite position relative to Earth center
+                            vec3 satPos = aPosition;
+                            float satDist = length(satPos);
+                            
+                            // Discard satellites too close to origin (invalid data)
+                            if (satDist < 6000000.0) {
+                                gl_Position = vec4(2.0, 2.0, 2.0, 1.0);  // Off-screen
+                                gl_PointSize = 0.0;
+                                vBrightness = 0.0;
+                                return;
+                            }
+                            
+                            gl_Position = uMvpMatrix * vec4(aPosition, 1.0);
+                            
+                            vec3 satNormal = satPos / satDist;  // Points away from Earth
+                            
+                            // View direction (satellite to eye)
+                            vec3 viewDir = normalize(uEyePoint - satPos);
+                            
+                            // --- Earth Occlusion Check ---
+                            // Ray from eye toward satellite - does it hit Earth?
+                            vec3 rayDir = -viewDir;  // From eye to satellite
+                            float a = dot(rayDir, rayDir);
+                            float b = 2.0 * dot(uEyePoint, rayDir);
+                            float c = dot(uEyePoint, uEyePoint) - uEarthRadius * uEarthRadius;
+                            float discriminant = b * b - 4.0 * a * c;
+                            
+                            bool occluded = false;
+                            if (discriminant > 0.0) {
+                                float sqrtD = sqrt(discriminant);
+                                float t1 = (-b - sqrtD) / (2.0 * a);
+                                float t2 = (-b + sqrtD) / (2.0 * a);
+                                float tSat = length(satPos - uEyePoint);
+                                // Earth intersection before satellite?
+                                if ((t1 > 100.0 && t1 < tSat - 100.0) || (t2 > 100.0 && t2 < tSat - 100.0)) {
+                                    occluded = true;
+                                }
+                            }
+                            
+                            // --- Shadow Check ---
+                            // Cast ray from satellite toward sun, check if it hits Earth
+                            // Ray: P = satPos + t * uSunDir, t > 0 means toward sun
+                            // Sphere: |P|² = uEarthRadius²
+                            
+                            float shadowB = 2.0 * dot(satPos, uSunDir);
+                            float shadowC = dot(satPos, satPos) - uEarthRadius * uEarthRadius;
+                            // a = 1.0 since uSunDir is normalized
+                            float shadowDisc = shadowB * shadowB - 4.0 * shadowC;
+                            
+                            bool inShadow = false;
+                            if (shadowDisc >= 0.0) {
+                                // Ray intersects Earth sphere
+                                float sqrtDisc = sqrt(shadowDisc);
+                                float t1 = (-shadowB - sqrtDisc) * 0.5;  // Near intersection
+                                // If near intersection is positive, Earth is between us and sun
+                                inShadow = (t1 > 0.0);
+                            }
+                            
+                            // --- Specular Reflection (Glint) ---
+                            // Half-vector for Blinn-Phong
+                            vec3 halfVec = normalize(uSunDir + viewDir);
+                            
+                            // Multiple surface normals to simulate different satellite orientations
+                            vec3 normal1 = satNormal;  // Zenith-pointing (away from Earth)
+                            vec3 nadirNormal = -satNormal;  // Nadir-pointing (toward Earth) - flat panels facing down
+                            
+                            // Calculate tangent - handle pole edge case
+                            vec3 up = vec3(0.0, 0.0, 1.0);
+                            vec3 tangent = cross(satNormal, up);
+                            float tangentLen = length(tangent);
+                            if (tangentLen < 0.001) {
+                                // At pole, use different up vector
+                                tangent = cross(satNormal, vec3(1.0, 0.0, 0.0));
+                            }
+                            tangent = normalize(tangent);
+                            vec3 bitangent = normalize(cross(satNormal, tangent));
+                            
+                            // Add some pseudo-random orientation variation based on position
+                            float phase = fract(dot(satPos, vec3(0.0000137, 0.0000191, 0.0000227)) + uTime * 0.1);
+                            float angle = phase * 6.28318;
+                            vec3 normal2 = normalize(satNormal * cos(angle * 0.5) + tangent * sin(angle * 0.5));
+                            vec3 normal3 = normalize(satNormal * cos(angle * 0.7) + bitangent * sin(angle * 0.3));
+                            
+                            // Specular from each possible surface
+                            // Lower exponents = wider reflection cones = more visible glints
+                            float spec1 = pow(max(dot(normal1, halfVec), 0.0), 16.0);  // Zenith-facing
+                            float specNadir = pow(max(dot(nadirNormal, halfVec), 0.0), 12.0);  // Earth-facing panels
+                            float spec2 = pow(max(dot(normal2, halfVec), 0.0), 12.0);  // Tumbling facet
+                            float spec3 = pow(max(dot(normal3, halfVec), 0.0), 12.0);  // Tumbling facet
+                            float spec4 = pow(max(dot(tangent, halfVec), 0.0), 8.0);   // Solar panel edge
+                            float spec5 = pow(max(dot(bitangent, halfVec), 0.0), 8.0); // Solar panel edge
+                            
+                            float specular = max(max(max(max(spec1, specNadir), max(spec2, spec3)), spec4), spec5);
+                            
+                            // Only render if there's a glint - no diffuse base
+                            if (occluded || inShadow) {
+                                vBrightness = 0.0;
+                            } else {
+                                vBrightness = specular;
+                            }
+                            
+                            // Point size scales with brightness (bloom effect)
+                            gl_PointSize = 1.0 + vBrightness * 1.0;
+                        }
+                    `;
+                    
+                    const fsSource = `
+                        precision mediump float;
+                        varying float vBrightness;
+                        
+                        void main() {
+                            // Only render significant glints
+                            if (vBrightness < 0.02) discard;
+                            
+                            // Point sprite - gaussian falloff for smooth antialiased look
+                            vec2 coord = gl_PointCoord - vec2(0.5);
+                            float dist = length(coord) * 2.0;  // 0 at center, 1 at edge
+                            
+                            // Gaussian-like falloff
+                            float alpha = exp(-dist * dist * 2.0);
+                            
+                            float b = clamp(vBrightness, 0.0, 1.0);
+                            
+                            // White/yellow for glints
+                            vec3 color = vec3(1.0, 0.98, 0.9);
+                            
+                            float finalAlpha = alpha * b;
+                            if (finalAlpha < 0.01) discard;
+                            
+                            gl_FragColor = vec4(color, finalAlpha);
+                        }
+                    `;
+                    
+                    const vs = gl.createShader(gl.VERTEX_SHADER);
+                    gl.shaderSource(vs, vsSource);
+                    gl.compileShader(vs);
+                    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+                        console.error('VS error:', gl.getShaderInfoLog(vs));
+                    }
+                    
+                    const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                    gl.shaderSource(fs, fsSource);
+                    gl.compileShader(fs);
+                    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+                        console.error('FS error:', gl.getShaderInfoLog(fs));
+                    }
+                    
+                    this._glintProgram = gl.createProgram();
+                    gl.attachShader(this._glintProgram, vs);
+                    gl.attachShader(this._glintProgram, fs);
+                    gl.linkProgram(this._glintProgram);
+                    if (!gl.getProgramParameter(this._glintProgram, gl.LINK_STATUS)) {
+                        console.error('Link error:', gl.getProgramInfoLog(this._glintProgram));
+                    }
+                    
+                    this._locs = {
+                        aPosition: gl.getAttribLocation(this._glintProgram, 'aPosition'),
+                        uMvpMatrix: gl.getUniformLocation(this._glintProgram, 'uMvpMatrix'),
+                        uEyePoint: gl.getUniformLocation(this._glintProgram, 'uEyePoint'),
+                        uSunDir: gl.getUniformLocation(this._glintProgram, 'uSunDir'),
+                        uEarthRadius: gl.getUniformLocation(this._glintProgram, 'uEarthRadius'),
+                        uTime: gl.getUniformLocation(this._glintProgram, 'uTime')
+                    };
+                }
+                
+                // Calculate sun direction using WorldWind's coordinate system
+                const date = this.currentDate || new Date();
+                const sunRA = sunPositionApprox(date);
+                const gmst = gmstDegrees(date);
+                const sunLon = ((sunRA - gmst) % 360 + 360) % 360;
+                // Subsolar point latitude is ~0 for simplicity (ignoring axial tilt)
+                const sunLat = 0;
+                
+                // Use WorldWind to convert sun position to Cartesian (same coord system as satellites)
+                const sunCartesian = new WorldWind.Vec3(0, 0, 0);
+                dc.globe.computePointFromPosition(sunLat, sunLon, 1e9, sunCartesian);  // Far away
+                // Normalize to get direction
+                const sunLen = Math.sqrt(sunCartesian[0]*sunCartesian[0] + sunCartesian[1]*sunCartesian[1] + sunCartesian[2]*sunCartesian[2]);
+                const sunDir = [sunCartesian[0]/sunLen, sunCartesian[1]/sunLen, sunCartesian[2]/sunLen];
+                
+                gl.useProgram(this._glintProgram);
+                
+                // GL state
+                gl.depthMask(false);
+                gl.disable(gl.DEPTH_TEST);
+                gl.disable(gl.CULL_FACE);
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                
+                // First, get a working MVP matrix using WorldWind's approach
+                const viewport = dc.viewport;
+                const proj = new WorldWind.Matrix(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+                proj.setToPerspectiveProjection(viewport.width, viewport.height, 1, 1e9);
+                const mvp = new WorldWind.Matrix(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+                mvp.setToMultiply(proj, dc.modelview);
+                
+                // Convert WorldWind Matrix to Float32Array
+                // WorldWind uses row-major, GLSL expects column-major, so transpose
+                const mvpArray = new Float32Array([
+                    mvp[0], mvp[4], mvp[8], mvp[12],
+                    mvp[1], mvp[5], mvp[9], mvp[13],
+                    mvp[2], mvp[6], mvp[10], mvp[14],
+                    mvp[3], mvp[7], mvp[11], mvp[15]
+                ]);
+                
+                gl.uniformMatrix4fv(this._locs.uMvpMatrix, false, mvpArray);
+                
+                const eye = dc.eyePoint;
+                gl.uniform3f(this._locs.uEyePoint, eye[0], eye[1], eye[2]);
+                gl.uniform3f(this._locs.uSunDir, sunDir[0], sunDir[1], sunDir[2]);
+                gl.uniform1f(this._locs.uEarthRadius, 6378137.0);
+                gl.uniform1f(this._locs.uTime, (Date.now() % 100000) / 1000);
+                
+                // Build vertex buffer (just positions - shader does all the work)
+                if (!this._vertexBuffer || this._needsRebuild) {
+                    const vertices = [];
+                    const cartesian = new WorldWind.Vec3(0, 0, 0);
+                    
+                    for (let i = 0; i < this.geoPositions.length; i++) {
+                        const pos = this.geoPositions[i];
+                        
+                        // Skip invalid positions
+                        if (!pos || isNaN(pos.lat) || isNaN(pos.lon) || isNaN(pos.alt)) {
+                            continue;
+                        }
+                        
+                        dc.globe.computePointFromPosition(pos.lat, pos.lon, pos.alt, cartesian);
+                        
+                        // Skip if conversion produced invalid values or origin
+                        if (isNaN(cartesian[0]) || isNaN(cartesian[1]) || isNaN(cartesian[2])) {
+                            continue;
+                        }
+                        
+                        // Skip points too close to origin (likely errors)
+                        const distFromOrigin = Math.sqrt(cartesian[0]*cartesian[0] + cartesian[1]*cartesian[1] + cartesian[2]*cartesian[2]);
+                        if (distFromOrigin < 6000000) {  // Less than ~6000km from center = inside Earth
+                            continue;
+                        }
+                        
+                        vertices.push(cartesian[0], cartesian[1], cartesian[2]);
+                    }
+                    
+                    if (this._vertexBuffer) gl.deleteBuffer(this._vertexBuffer);
+                    this._vertexBuffer = gl.createBuffer();
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this._vertexBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+                    this._vertexCount = vertices.length / 3;
+                    this._needsRebuild = false;
+                } else {
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this._vertexBuffer);
+                }
+                
+                gl.enableVertexAttribArray(this._locs.aPosition);
+                gl.vertexAttribPointer(this._locs.aPosition, 3, gl.FLOAT, false, 0, 0);
+                
+                if (this._vertexCount > 0) {
+                    gl.drawArrays(gl.POINTS, 0, this._vertexCount);
+                }
+                
+                gl.disableVertexAttribArray(this._locs.aPosition);
+                
+                // Restore state properly
+                gl.depthMask(true);
+                gl.enable(gl.DEPTH_TEST);
+                gl.enable(gl.CULL_FACE);
+                gl.disable(gl.BLEND);
+                gl.useProgram(null);
+                gl.bindBuffer(gl.ARRAY_BUFFER, null);
+                
+                this.inCurrentFrame = true;
+            }
+        }
+        
+        // Create satellite layer (disabled by default)
+        const satelliteFieldLayer = new SatelliteFieldLayer("Satellites");
+        satelliteFieldLayer.enabled = false;
+        
+        // Custom OrbitFieldLayer - renders orbits like StarFieldLayer (with depthMask disabled)
+        class OrbitFieldLayer extends WorldWind.Layer {
+            constructor(displayName) {
+                super(displayName);
+                this.orbits = [];  // Array of {positions: [], color: [r,g,b,a], width: n}
+                this._vboKey = null;
+                this._needsUpdate = true;
+                this._debugged = false;
+            }
+            
+            addOrbit(positions, color, width) {
+                this.orbits.push({ positions, color, width });
+                this._needsUpdate = true;
+            }
+            
+            clearOrbits() {
+                this.orbits = [];
+                this._needsUpdate = true;
+            }
+            
+            doRender(dc) {
+                if (dc.globe.is2D() || this.orbits.length === 0) return;
+                
+                const gl = dc.currentGlContext;
+                
+                // Use basic program for lines
+                const program = dc.findAndBindProgram(WorldWind.BasicProgram);
+                
+                // Disable depth mask AND depth test (like StarFieldLayer)
+                gl.depthMask(false);
+                gl.disable(gl.DEPTH_TEST);
+                gl.disable(gl.CULL_FACE);
+                
+                // Enable blending for transparency
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                
+                // Create new projection with huge far plane
+                const viewport = dc.viewport;
+                const width = viewport.width;
+                const height = viewport.height;
+                
+                const proj = new WorldWind.Matrix(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+                proj.setToPerspectiveProjection(width, height, 1, 1e9);
+                
+                const mvp = new WorldWind.Matrix(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+                mvp.setToMultiply(proj, dc.modelview);
+                
+                program.loadModelviewProjection(gl, mvp);
+                
+                // Get eye position for occlusion testing
+                const eye = dc.eyePoint;
+                const earthRadius = 6378137;  // meters
+                
+                // Function to check if a point is occluded by Earth
+                function isPointVisible(px, py, pz) {
+                    const dx = px - eye[0];
+                    const dy = py - eye[1];
+                    const dz = pz - eye[2];
+                    
+                    const a = dx*dx + dy*dy + dz*dz;
+                    const b = 2 * (eye[0]*dx + eye[1]*dy + eye[2]*dz);
+                    const c = eye[0]*eye[0] + eye[1]*eye[1] + eye[2]*eye[2] - earthRadius*earthRadius;
+                    
+                    const discriminant = b*b - 4*a*c;
+                    
+                    if (discriminant < 0) return true;
+                    
+                    const sqrtDisc = Math.sqrt(discriminant);
+                    const t1 = (-b - sqrtDisc) / (2*a);
+                    const t2 = (-b + sqrtDisc) / (2*a);
+                    
+                    if ((t1 > 0.001 && t1 < 0.999) || (t2 > 0.001 && t2 < 0.999)) {
+                        return false;
+                    }
+                    
+                    return true;
+                }
+                
+                // Binary search to find horizon crossing point between visible and hidden vertices
+                function findHorizonPoint(v1, v2, v1Visible) {
+                    let lo = 0, hi = 1;
+                    let midPoint = [0, 0, 0];
+                    
+                    for (let i = 0; i < 10; i++) {  // 10 iterations for good precision
+                        const mid = (lo + hi) / 2;
+                        midPoint[0] = v1[0] + mid * (v2[0] - v1[0]);
+                        midPoint[1] = v1[1] + mid * (v2[1] - v1[1]);
+                        midPoint[2] = v1[2] + mid * (v2[2] - v1[2]);
+                        
+                        const midVisible = isPointVisible(midPoint[0], midPoint[1], midPoint[2]);
+                        
+                        if (midVisible === v1Visible) {
+                            lo = mid;
+                        } else {
+                            hi = mid;
+                        }
+                    }
+                    
+                    // Return the point at the boundary
+                    const t = (lo + hi) / 2;
+                    return [
+                        v1[0] + t * (v2[0] - v1[0]),
+                        v1[1] + t * (v2[1] - v1[1]),
+                        v1[2] + t * (v2[2] - v1[2])
+                    ];
+                }
+                
+                // Draw each orbit
+                for (const orbit of this.orbits) {
+                    // Convert positions to Cartesian and check visibility
+                    const allVertices = [];
+                    const visibility = [];
+                    
+                    for (const pos of orbit.positions) {
+                        const cart = dc.globe.computePointFromPosition(
+                            pos.latitude, pos.longitude, pos.altitude, new WorldWind.Vec3()
+                        );
+                        allVertices.push([cart[0], cart[1], cart[2]]);
+                        visibility.push(isPointVisible(cart[0], cart[1], cart[2]));
+                    }
+                    
+                    // Build segments with horizon intersection points
+                    const segments = [];
+                    let currentSegment = null;
+                    
+                    for (let i = 0; i < visibility.length; i++) {
+                        const v = allVertices[i];
+                        const isVis = visibility[i];
+                        const prevVis = i > 0 ? visibility[i - 1] : null;
+                        
+                        if (isVis) {
+                            // Current point is visible
+                            if (currentSegment === null) {
+                                currentSegment = [];
+                                // Check if we need to add horizon entry point
+                                if (i > 0 && !prevVis) {
+                                    const horizonPt = findHorizonPoint(allVertices[i-1], v, false);
+                                    currentSegment.push(horizonPt);
+                                }
+                            }
+                            currentSegment.push(v);
+                        } else {
+                            // Current point is hidden
+                            if (currentSegment !== null) {
+                                // Add horizon exit point before ending segment
+                                const horizonPt = findHorizonPoint(allVertices[i-1], v, true);
+                                currentSegment.push(horizonPt);
+                                segments.push(currentSegment);
+                                currentSegment = null;
+                            }
+                        }
+                    }
+                    
+                    // Don't forget last segment
+                    if (currentSegment !== null && currentSegment.length > 0) {
+                        segments.push(currentSegment);
+                    }
+                    
+                    // Draw all segments
+                    for (const segment of segments) {
+                        if (segment.length < 2) continue;
+                        
+                        const vertices = [];
+                        for (const pt of segment) {
+                            vertices.push(pt[0], pt[1], pt[2]);
+                        }
+                        
+                        const buffer = gl.createBuffer();
+                        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+                        
+                        const location = program.attributeLocation(gl, "vertexPoint");
+                        gl.enableVertexAttribArray(location);
+                        gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+                        
+                        program.loadColor(gl, new WorldWind.Color(
+                            orbit.color[0], orbit.color[1], orbit.color[2], orbit.color[3]
+                        ));
+                        
+                        gl.lineWidth(orbit.width);
+                        gl.drawArrays(gl.LINE_STRIP, 0, segment.length);
+                        
+                        gl.deleteBuffer(buffer);
+                        gl.disableVertexAttribArray(location);
+                    }
+                }
+                
+                // Restore GL state
+                gl.depthMask(true);
+                gl.enable(gl.DEPTH_TEST);
+                gl.enable(gl.CULL_FACE);
+                
+                this.inCurrentFrame = true;
+            }
+        }
+        
+        // Create our custom orbit layer
+        const orbitFieldLayer = new OrbitFieldLayer("Orbit Field");
+        
+        // Also keep ground track layer for ground-level viewing
+        const groundTrackLayer = new WorldWind.RenderableLayer("Ground Tracks");
+        
+        // Add layers - orbit field AFTER atmosphere so it renders on top of everything
+        wwd.addLayer(atmosphereLayer);
+        wwd.addLayer(satelliteFieldLayer);  // 1 million satellites!
+        wwd.addLayer(orbitFieldLayer);
+        wwd.addLayer(groundTrackLayer);
+
+        // Set time for day/night effect - THIS IS THE KEY!
+        starFieldLayer.time = simDate;
+        atmosphereLayer.time = simDate;
+        atmosphereLayer.opacity = 0.8;  // Slightly reduce to help with visibility
+
+        // Ground track attributes - still use Path for these (they work fine on ground)
+        const groundSsoAttrs = new WorldWind.ShapeAttributes(null);
+        groundSsoAttrs.outlineColor = new WorldWind.Color(0.133, 0.827, 0.933, 1);
+        groundSsoAttrs.outlineWidth = 4;
+
+        const ground30Attrs = new WorldWind.ShapeAttributes(null);
+        ground30Attrs.outlineColor = new WorldWind.Color(0.976, 0.451, 0.086, 1);
+        ground30Attrs.outlineWidth = 4;
+
+        // Function to create orbits for a given time
+        function createOrbits(date) {
+            createOrbitsFiltered(date, true, true);
+        }
+        
+        // J2 nodal precession rate calculation
+        // Returns precession rate in degrees per day (positive = eastward/follows sun)
+        function j2PrecessionRate(altitudeKm, inclinationDeg) {
+            const J2 = 1.08263e-3;
+            const Re = 6378.137;  // km
+            const mu = 398600.4418;  // km³/s²
+            
+            const a = Re + altitudeKm;  // semi-major axis
+            const n = Math.sqrt(mu / (a * a * a));  // mean motion (rad/s)
+            const i = inclinationDeg * Math.PI / 180;
+            
+            // Ω̇ = -3/2 * J2 * (Re/a)² * n * cos(i)
+            const omegaDotRadPerSec = -1.5 * J2 * Math.pow(Re / a, 2) * n * Math.cos(i);
+            const omegaDotDegPerDay = omegaDotRadPerSec * (180 / Math.PI) * 86400;
+            
+            // Flip sign so precession follows the sun (eastward in ECEF frame)
+            return -omegaDotDegPerDay;
+        }
+
+        function createOrbitsFiltered(date, showSSO, showLEO) {
+            const sunRA = sunPositionApprox(date);
+            const gmst = gmstDegrees(date);
+            const terminatorRaanDusk = (sunRA + 90) % 360;
+            const terminatorRaanDawn = (sunRA - 90 + 360) % 360;
+            
+            // Calculate time since epoch (start of current day) for J2 drift
+            const epochStart = new Date(date);
+            epochStart.setUTCHours(0, 0, 0, 0);
+            const daysFraction = (date - epochStart) / (24 * 60 * 60 * 1000);
+
+            // Clear existing
+            orbitFieldLayer.clearOrbits();
+            groundTrackLayer.removeAllRenderables();
+
+            // All 388 shells from McDowell's SXODC data:
+            // Shells 1-341: LEO-A (30°-80° in 5° steps) × 31 altitudes each = 1,500 sats/shell
+            // Shells 342-357: LEO-B (85°) × 16 altitudes (500-1250 km) = 1,500 sats/shell (last has 1,000)
+            // Shells 358-388: SSO (97°) × 31 altitudes (500-2000 km) = 15,000 sats/shell
+            
+            // Altitude shells: 500-2000 km in 50 km steps (31 shells)
+            const allAltitudes = [];
+            for (let alt = 500; alt <= 2000; alt += 50) {
+                allAltitudes.push(alt);
+            }
+            
+            // LEO-B altitudes: 500-1250 km (16 shells)
+            const leoBaltitudes = [];
+            for (let alt = 500; alt <= 1250; alt += 50) {
+                leoBaltitudes.push(alt);
+            }
+            
+            // LEO-A inclinations
+            const leoAInclinations = [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80];
+            
+            // Scale factors based on satellites per shell:
+            // SSO: 15,000 sats → brightest/thickest (reference)
+            // LEO-A/B: 1,500 sats → 10× fewer
+            
+            // Color schemes - scaled by satellite density
+            // SSO: 15,000 sats/shell - bright and thick
+            const ssoColor = [0.133, 0.827, 0.933, 0.8];      // Cyan, high alpha
+            const ssoWidth = 2.5;
+            
+            // LEO-A: 1,500 sats/shell - dimmer and thinner (10× fewer)
+            const leoAColor = [0.976, 0.451, 0.086, 0.4];     // Orange, lower alpha
+            const leoAWidth = 1.0;
+            
+            // LEO-B: 1,500 sats/shell - softer green for visibility against orange/cyan
+            const leoBColor = [0.3, 0.85, 0.5, 0.7];          // Softer green
+            const leoBWidth = 1.8;
+
+            if (showSSO) {
+                // SSO Shells 358-388: 31 shells at 97° (500-2000 km)
+                // Each shell has 500 planes spread ±20° around terminator
+                // Show orbits spread across the terminator band
+                allAltitudes.forEach((alt, altIdx) => {
+                    // Spread across terminator band: ±20° from exact terminator
+                    const spreadAngle = ((altIdx / allAltitudes.length) - 0.5) * 40;  // -20° to +20°
+                    
+                    // Dawn terminator with spread
+                    const raanDawn = (terminatorRaanDawn + spreadAngle + 360) % 360;
+                    const positionsDawn = generateOrbitPositions(alt, 97, raanDawn, gmst);
+                    orbitFieldLayer.addOrbit(positionsDawn, ssoColor, ssoWidth);
+                    
+                    // Dusk terminator with opposite spread
+                    const raanDusk = (terminatorRaanDusk - spreadAngle + 360) % 360;
+                    const positionsDusk = generateOrbitPositions(alt, 97, raanDusk, gmst);
+                    orbitFieldLayer.addOrbit(positionsDusk, ssoColor, ssoWidth);
+                });
+                
+                // Ground tracks for terminator
+                [terminatorRaanDusk, terminatorRaanDawn].forEach((raan) => {
+                    const positions = generateOrbitPositions(1000, 97, raan, gmst);
+                    const groundPositions = positions.map(p => new WorldWind.Position(p.latitude, p.longitude, 0));
+                    const groundPath = new WorldWind.Path(groundPositions, groundSsoAttrs);
+                    groundPath.altitudeMode = WorldWind.CLAMP_TO_GROUND;
+                    groundPath.followTerrain = true;
+                    groundTrackLayer.addRenderable(groundPath);
+                });
+            }
+
+            if (showLEO) {
+                // LEO-A Shells 1-341: 11 inclinations × 31 altitudes = 341 shells
+                // Each shell has 50 planes - spread RAANs across ALL shells for coverage
+                let shellIndex = 0;
+                const totalLeoAShells = leoAInclinations.length * allAltitudes.length;  // 341
+                
+                leoAInclinations.forEach((inc, incIdx) => {
+                    allAltitudes.forEach((alt, altIdx) => {
+                        // Spread RAANs evenly across all 341 shells
+                        const baseRaan = (shellIndex / totalLeoAShells) * 360;
+                        
+                        // Calculate J2 drift
+                        const precessionRate = j2PrecessionRate(alt, inc);
+                        const raanDrift = precessionRate * daysFraction;
+                        const raan = (baseRaan + raanDrift + 360) % 360;
+                        
+                        const positions = generateOrbitPositions(alt, inc, raan, gmst);
+                        orbitFieldLayer.addOrbit(positions, leoAColor, leoAWidth);
+                        
+                        shellIndex++;
+                    });
+                });
+
+                // Ground tracks for a couple LEO-A inclinations
+                [30, 55, 80].forEach((inc) => {
+                    const precessionRate = j2PrecessionRate(1000, inc);
+                    const raanDrift = precessionRate * daysFraction;
+                    const raan = (0 + raanDrift + 360) % 360;
+                    const positions = generateOrbitPositions(1000, inc, raan, gmst);
+                    const groundPositions = positions.map(p => new WorldWind.Position(p.latitude, p.longitude, 0));
+                    const groundPath = new WorldWind.Path(groundPositions, ground30Attrs);
+                    groundPath.altitudeMode = WorldWind.CLAMP_TO_GROUND;
+                    groundPath.followTerrain = true;
+                    groundTrackLayer.addRenderable(groundPath);
+                });
+                
+                // LEO-B Shells 342-357: 16 shells at 85° (500-1250 km)
+                // Each shell has 50 planes - spread evenly around globe
+                const leoBAttrs = new WorldWind.ShapeAttributes(null);
+                leoBAttrs.outlineColor = new WorldWind.Color(0.3, 0.85, 0.5, 0.8);
+                leoBAttrs.outlineWidth = 2;
+                
+                leoBaltitudes.forEach((alt, altIdx) => {
+                    // Spread RAANs evenly across all 16 shells (360/16 = 22.5° apart)
+                    const baseRaan = (altIdx / leoBaltitudes.length) * 360;
+                    
+                    const precessionRate = j2PrecessionRate(alt, 85);
+                    const raanDrift = precessionRate * daysFraction;
+                    const raan = (baseRaan + raanDrift + 360) % 360;
+                    
+                    const positions = generateOrbitPositions(alt, 85, raan, gmst);
+                    orbitFieldLayer.addOrbit(positions, leoBColor, leoBWidth);
+                });
+                
+                // Ground track for 85° polar orbit
+                const precessionRate85 = j2PrecessionRate(1000, 85);
+                const raanDrift85 = precessionRate85 * daysFraction;
+                const raan85 = (0 + raanDrift85 + 360) % 360;
+                const positions85 = generateOrbitPositions(1000, 85, raan85, gmst);
+                const groundPositions85 = positions85.map(p => new WorldWind.Position(p.latitude, p.longitude, 0));
+                const groundPath85 = new WorldWind.Path(groundPositions85, leoBAttrs);
+                groundPath85.altitudeMode = WorldWind.CLAMP_TO_GROUND;
+                groundPath85.followTerrain = true;
+                groundTrackLayer.addRenderable(groundPath85);
+            }
+            
+            // Log shell count
+            const ssoShells = showSSO ? 31 * 2 : 0;  // Dawn + dusk
+            const leoAShells = showLEO ? 11 * 31 : 0;
+            const leoBShells = showLEO ? 16 : 0;
+            console.log(`Orbit lines: ${ssoShells} SSO + ${leoAShells} LEO-A + ${leoBShells} LEO-B = ${ssoShells + leoAShells + leoBShells} total`);
+        }
+
+        // Create initial orbits
+        createOrbits(simDate);
+
+        // Add controls (no compass)
+        wwd.addLayer(new WorldWind.CoordinatesDisplayLayer(wwd));
+        wwd.addLayer(new WorldWind.ViewControlsLayer(wwd));
+
+        // Initial view
+        wwd.navigator.lookAtLocation.latitude = 20;
+        wwd.navigator.lookAtLocation.longitude = 0;
+        wwd.navigator.range = 2.5e7;
+
+        wwd.redraw();
+
+        // Time simulation - 100x speed (1 second = ~1.5 minutes of simulated time)
+        let doRunSimulation = false;
+        let simTimeStamp = Date.now();
+        let animationInterval = null;
+        const simSpeed = 100; // 100x real time
+
+        function runAnimation() {
+            if (!doRunSimulation) return;
+            
+            simTimeStamp += simSpeed * 1000;  // Add simSpeed seconds per frame (60fps = 6000 sim seconds/real second)
+            const newDate = new Date(simTimeStamp);
+            starFieldLayer.time = newDate;
+            atmosphereLayer.time = newDate;
+            
+            // Update orbits to track terminator
+            createOrbitsFiltered(newDate, showSSO, show30);
+            
+            // Update satellite positions if enabled
+            if (satelliteFieldLayer.enabled && satelliteFieldLayer.orbitalElements) {
+                satelliteFieldLayer.updatePositions(newDate);
+            }
+            
+            // Update time display
+            const hoursFromNow = (simTimeStamp - Date.now()) / (60 * 60 * 1000);
+            if (Math.abs(hoursFromNow) < 0.01) {
+                document.getElementById('timeDisplay').textContent = 'Now';
+            } else {
+                const totalMinutes = Math.round(hoursFromNow * 60);
+                const hours = Math.floor(Math.abs(totalMinutes) / 60);
+                const minutes = Math.abs(totalMinutes) % 60;
+                const sign = hoursFromNow >= 0 ? '+' : '-';
+                
+                let timeStr;
+                if (hours === 0) {
+                    timeStr = `${sign}${minutes}m`;
+                } else if (minutes === 0) {
+                    timeStr = `${sign}${hours}h`;
+                } else {
+                    timeStr = `${sign}${hours}h ${minutes}m`;
+                }
+                document.getElementById('timeDisplay').textContent = 
+                    `${timeStr}: ${newDate.toUTCString().slice(0, -4)}`;
+            }
+            
+            // Update slider position (clamped to range)
+            const sliderValue = Math.max(-12, Math.min(12, hoursFromNow));
+            document.getElementById('timeSlider').value = sliderValue;
+            
+            wwd.redraw();
+        }
+
+        // UI Controls - SSO toggle (we'll filter by checking orbit inclination later, for now just toggle all)
+        let showSSO = true;
+        let show30 = true;
+        
+        document.getElementById('toggleSSO').addEventListener('change', function() {
+            showSSO = this.checked;
+            // Rebuild orbits with current visibility
+            const hoursOffset = parseFloat(document.getElementById('timeSlider').value);
+            const currentDate = new Date(Date.now() + hoursOffset * 60 * 60 * 1000);
+            createOrbitsFiltered(currentDate, showSSO, show30);
+            // Regenerate satellites if enabled
+            if (satelliteFieldLayer.enabled) {
+                satelliteFieldLayer.generateSatellites(currentDate, 500000, showSSO, show30);
+            }
+            wwd.redraw();
+        });
+
+        document.getElementById('toggle30').addEventListener('change', function() {
+            show30 = this.checked;
+            const hoursOffset = parseFloat(document.getElementById('timeSlider').value);
+            const currentDate = new Date(Date.now() + hoursOffset * 60 * 60 * 1000);
+            createOrbitsFiltered(currentDate, showSSO, show30);
+            // Regenerate satellites if enabled
+            if (satelliteFieldLayer.enabled) {
+                satelliteFieldLayer.generateSatellites(currentDate, 500000, showSSO, show30);
+            }
+            wwd.redraw();
+        });
+
+        document.getElementById('toggleSatellites').addEventListener('change', function() {
+            satelliteFieldLayer.enabled = this.checked;
+            // Hide orbit lines when satellites are shown
+            orbitFieldLayer.enabled = !this.checked;
+            if (this.checked) {
+                // Generate 1 million satellites!
+                const hoursOffset = parseFloat(document.getElementById('timeSlider').value);
+                const currentDate = new Date(Date.now() + hoursOffset * 60 * 60 * 1000);
+                console.log("Generating 1 million satellites...");
+                satelliteFieldLayer.generateSatellites(currentDate, 500000, showSSO, show30);
+            }
+            wwd.redraw();
+        });
+
+        document.getElementById('toggleGround').addEventListener('change', function() {
+            groundTrackLayer.enabled = this.checked;
+            wwd.redraw();
+        });
+
+        document.getElementById('toggleAtmosphere').addEventListener('change', function() {
+            atmosphereLayer.enabled = this.checked;
+            wwd.redraw();
+        });
+
+        document.getElementById('timeSlider').addEventListener('input', function() {
+            const hoursOffset = parseFloat(this.value);
+            const newDate = new Date(Date.now() + hoursOffset * 60 * 60 * 1000);
+            
+            starFieldLayer.time = newDate;
+            atmosphereLayer.time = newDate;
+            createOrbitsFiltered(newDate, showSSO, show30);
+            
+            // Update satellite positions if enabled
+            if (satelliteFieldLayer.enabled && satelliteFieldLayer.orbitalElements) {
+                satelliteFieldLayer.updatePositions(newDate);
+            }
+            
+            if (Math.abs(hoursOffset) < 0.01) {
+                document.getElementById('timeDisplay').textContent = 'Now';
+            } else {
+                // Format as hours and minutes
+                const totalMinutes = Math.round(hoursOffset * 60);
+                const hours = Math.floor(Math.abs(totalMinutes) / 60);
+                const minutes = Math.abs(totalMinutes) % 60;
+                const sign = hoursOffset >= 0 ? '+' : '-';
+                
+                let timeStr;
+                if (hours === 0) {
+                    timeStr = `${sign}${minutes}m`;
+                } else if (minutes === 0) {
+                    timeStr = `${sign}${hours}h`;
+                } else {
+                    timeStr = `${sign}${hours}h ${minutes}m`;
+                }
+                
+                document.getElementById('timeDisplay').textContent = 
+                    `${timeStr}: ${newDate.toUTCString().slice(0, -4)}`;
+            }
+            
+            simTimeStamp = newDate.getTime();
+            wwd.redraw();
+        });
+
+        document.getElementById('runSimulation').addEventListener('change', function() {
+            doRunSimulation = this.checked;
+            if (doRunSimulation) {
+                // Start from current slider position
+                const hoursOffset = parseFloat(document.getElementById('timeSlider').value);
+                simTimeStamp = Date.now() + hoursOffset * 60 * 60 * 1000;
+                // Run animation at ~30fps
+                animationInterval = setInterval(runAnimation, 33);
+            } else {
+                // Stop animation
+                if (animationInterval) {
+                    clearInterval(animationInterval);
+                    animationInterval = null;
+                }
+                // Keep current time position
+            }
+            wwd.redraw();
+        });
+
+        // Panel collapse/close handlers
+        document.getElementById('collapseControls').addEventListener('click', function() {
+            const panel = document.getElementById('controlsPanel');
+            const content = document.getElementById('controlsContent');
+            const isCollapsed = content.classList.toggle('collapsed');
+            panel.classList.toggle('collapsed', isCollapsed);
+            this.textContent = isCollapsed ? '+' : '−';
+        });
+
+        document.getElementById('closeInfo').addEventListener('click', function() {
+            document.getElementById('infoPanel').classList.add('hidden');
+        });
+
+        console.log("WorldWind initialized with SpaceX orbital constellation");
+    </script>
+</body>
+</html>
